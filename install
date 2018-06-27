@@ -1,0 +1,3 @@
+#!/bin/bash
+source .env
+fab "install_odoo:hosts="$HOSTS",instance=$INSTANCE,version=$VERSION,url=$INSTANCE.$DOMAIN,email=$EMAIL"

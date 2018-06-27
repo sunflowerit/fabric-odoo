@@ -1,0 +1,3 @@
+%(USERNAME)s ALL=NOPASSWD: /usr/sbin/service %(USERNAME)s restart
+%(USERNAME)s ALL=NOPASSWD: /usr/sbin/service %(USERNAME)s stop
+%(USERNAME)s ALL=NOPASSWD: /usr/sbin/service %(USERNAME)s start

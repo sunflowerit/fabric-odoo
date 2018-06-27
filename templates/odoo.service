@@ -1,0 +1,9 @@
+[Unit]
+Description=Odoo %(INSTANCE)s
+After=postgresql.service
+[Service]
+Type=simple
+User=%(USERNAME)s
+ExecStart=/home/%(USERNAME)s/buildout/bin/start_odoo
+[Install]
+WantedBy=default.target
