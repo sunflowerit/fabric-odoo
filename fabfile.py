@@ -89,9 +89,6 @@ class OdooInstance:
     def setup_unix_user(self):
         ssh_dir = "{}/.ssh".format(self.home)
 
-        sudo("mkdir -p {}".format(ssh_dir))
-        sudo("chmod 700 {}".format(ssh_dir))
-
         auth_file = "{}/authorized_keys".format(ssh_dir)
         put('config/authorized_keys', auth_file, use_sudo=True)
         sudo("chmod 600 {}".format(auth_file))
@@ -101,7 +98,14 @@ class OdooInstance:
         put('templates/.vimrc', vim_file, use_sudo=True)
         sudo("chown {0}:{0} {1}".format(self.username, vim_file))
 
+        aliases = "{}/.bash_aliases".format(self.home)
+        put('templates/.bash_aliases', aliases, use_sudo=True)
+        sudo("chown {0}:{0} {1}".format(self.username, vim_file))
+
         with settings(sudo_user=self.username):
+            sudo("mkdir -p {}".format(ssh_dir))
+            sudo("chmod 700 {}".format(ssh_dir))
+
             sudo('git config --global user.name "Odoo instance: {}"'.format(self.instance))
             sudo('git config --global user.email info@sunflowerweb.nl')
             sudo('pip install --upgrade --user https://github.com/sunflowerit/dev-helper-scripts/archive/master.zip')
