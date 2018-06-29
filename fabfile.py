@@ -1,5 +1,4 @@
-# Fabfile to:
-#    - Download backups of all odoos
+# -*- coding: utf-8 -*-
 
 import io
 import json
@@ -170,7 +169,8 @@ class OdooInstance:
                 'templates/odoo.service',
                 servicefile,
                 context={'INSTANCE': self.instance, 'USERNAME': self.username},
-                use_sudo=True
+                use_sudo=True,
+                backup=False
             )
         sudo(
             "systemctl daemon-reload && "
@@ -221,7 +221,8 @@ class OdooInstance:
                 'PORT': self.port,
                 'LONG_PORT': self.port + 1,
             },
-            use_sudo=True
+            use_sudo=True,
+            backup=False
         )
         sudo('chown {USERNAME}:{USERNAME} {CFG}'.format(
             CFG=local_cfg_file,
@@ -254,7 +255,8 @@ class OdooInstance:
                 'PORT': self.port,
                 'LONGPORT': self.port + 1,
             },
-            use_sudo=True
+            use_sudo=True,
+            backup=False,
         )
         sudo("nginx_ensite {} && systemctl restart nginx".format(self.nginx_file_name))
         os.system("ssh {} 'buildout/bin/upgrade_odoo'".format(self.username))
@@ -270,7 +272,8 @@ class OdooInstance:
                 'DBUSER': self.dbuser,
                 'PASSWORD': self.password,
             },
-            use_sudo=True
+            use_sudo=True,
+            backup=False
         )
 
     def add_sudo(self):
