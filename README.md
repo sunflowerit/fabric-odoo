@@ -6,5 +6,10 @@ To Run Odoo Installation Script:
     cd PATH_TO_FAB_SCRIPT
     cp .env.template .env
     # Now edit .env
+    # Now create 'authorized_keys'
     ./install
+
+Reconfigure existing Odoo:
+
+    ./reconfigure
 

@@ -19,17 +19,26 @@ class FabricException(Exception):
 
 class OdooInstance:
     
-    def __init__(self, instance=False, url=False, version=False, email=False):
+    def __init__(self, instance=False):
+        self.instance = instance
+        self.username = "odoo-" + self.instance
+        self.home = "/home/{}".format(self.username)
+
+    def configure_unix_user(self):
+        if not self.unix_user_exists():
+            print "Creating Unix User..."
+            self.create_unix_user()
+        print "Setting up Unix User..."
+        self.setup_unix_user()
+
+    def install_odoo(self, url=False, version=False, email=False):
         self.branch = '{0}.0-custom-standard'.format(version)
         self.cfg = 'odoo{0}-standard.cfg'.format(version)
-        self.url = url or instance + '.1systeem.nl'
+        self.url = url or self.instance + '.1systeem.nl'
         self.password = self.get_password()
         self.port = self.get_port()
-        self.instance = instance
-        self.username = "odoo-" + instance
-        self.home = "/home/{}".format(self.username)
         self.logfile = "{}/{}.log".format(self.home, self.username)
-        self.dbuser = "odoo" + instance.replace('-','')
+        self.dbuser = "odoo" + self.instance.replace('-','')
         self.nginx_file_name = "odoo_" + self.instance
         self.email = email
         print self.branch, self.cfg
@@ -54,27 +63,28 @@ class OdooInstance:
     def get_password(self):
         return sudo("pwgen | awk '{print $1;}'")
 
+    def create_unix_user(self):
+        """ Create unix user """
+        sudo("adduser {} --disabled-password --gecos GECOS".format(self.username))
+
     def setup_unix_user(self):
-        sudo(
-            "PASSWORD={PASSWORD}; \
-            echo $PASSWORD; \
-            INSTANCE={INSTANCE}; \
-            echo $INSTANCE; \
-            USERNAME=odoo-$INSTANCE; \
-            echo $USERNAME; \
-            adduser $USERNAME --disabled-password --gecos GECOS;\
-            echo $USERNAME:$PASSWORD | chpasswd;\
-            mkdir -p /home/$USERNAME/.ssh;\
-            cp /home/odoo-sunflower/.ssh/authorized_keys /home/$USERNAME/.ssh/authorized_keys;\
-            cp /home/odoo-sunflower/.vimrc /home/$USERNAME/.vimrc;\
-            chmod 700 /home/$USERNAME/.ssh;\
-            chmod 600 /home/$USERNAME/.ssh/authorized_keys;\
-            chown -R $USERNAME:$USERNAME /home/$USERNAME/.ssh /home/$USERNAME/.vimrc"
-            .format(
-                INSTANCE=self.instance,
-                PASSWORD=self.password
-            )
-        )
+        ssh_dir = "{}/.ssh".format(self.home)
+
+        sudo("mkdir -p {}".format(ssh_dir))
+        sudo("chmod 700 {}".format(ssh_dir))
+
+        auth_file = "{}/authorized_keys".format(ssh_dir)
+        put('config/authorized_keys', auth_file, use_sudo=True)
+        sudo("chmod 600 {}".format(auth_file))
+        sudo("chown {0}:{0} {1}".format(self.username, auth_file))
+
+        vim_file = "{}/.vimrc".format(self.home)
+        put('templates/.vimrc', vim_file, use_sudo=True)
+        sudo("chown {0}:{0} {1}".format(self.username, vim_file))
+
+        sudo('git config --global user.name "Odoo instance: {}"'.format(self.instance), user=self.username)
+        sudo('git config --global user.email info@sunflowerweb.nl', user=self.username)
+
         print('Unix User Setup Successful...')
 
     def setup_postgres_user(self):
@@ -337,21 +347,33 @@ class OdooInstance:
 
 def install_odoo(instance=False, url=False, version=False, email=False):
     #fab install_odoo:instance=testv2,url=testurl
-    if not instance or not version or not email:
-        print "\n\
-        Run fab with arguments eg:\n\n\
-        fab install_odoo:instance=testv2,url=testurl \n\n\
-        Some arguments are missing: \n\n\
-        1. Required Arguments are:\n\n\
-            instance=INSTANCE_NAME\n\
-            version=INSTANCE_VERSION eg. 8, 9, 10 \n\
-            email=INSTANCE_SETTINGS_EMAIL\n\n\
-        2. Optional Arguments are:\n\n\
-            url=INSTANCE_URL eg. test.1systeem.nl\n\
-        "
+    if not instance or not url or not version or not email:
+        print """
+        Run with arguments eg:
+        fab install_odoo:instance=testv2,url=testurl
+        Some arguments are missing:
+        1. Required Arguments are:
+            instance=INSTANCE_NAME
+            version=INSTANCE_VERSION eg. 8, 9, 10
+            email=INSTANCE_SETTINGS_EMAIL
+        2. Optional Arguments are:
+            url=INSTANCE_URL eg. test.1systeem.nl
+        """
     else:
-        odoo = OdooInstance(instance=instance, url=url, version=version, email=email)
+        odoo = OdooInstance(instance=instance)
+        odoo.configure_unix_user()
+        odoo.install(url=url, version=version, email=email)
         print('Yay, we are done, visit your odoo instance at: \n https://{}'.format(odoo.url))
+
+
+def reconfigure(instance=False):
+    if not instance:
+        print """
+        Run with arguments eg:
+        fab reconfigure:instance=testv2
+        """
+    odoo = OdooInstance(instance=instance)
+    odoo.configure_unix_user()
 
 
 def backup():

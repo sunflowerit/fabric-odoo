@@ -1,0 +1,3 @@
+#!/bin/bash
+source config/.env
+fab "reconfigure:hosts="$HOSTS",instance=$INSTANCE"
