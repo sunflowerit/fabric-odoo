@@ -4,9 +4,9 @@ Odoo New Instance Script is a fab script, you need to run it in the folder that 
 To Run Odoo Installation Script:
 
     cd PATH_TO_FAB_SCRIPT
-    cp .env.template .env
-    # Now edit .env
-    # Now create 'authorized_keys'
+    cp config/.env.template config/.env
+    # Now edit `config/.env`
+    # Now create `config/authorized_keys`
     ./install
 
 Reconfigure existing Odoo:
