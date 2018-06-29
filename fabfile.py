@@ -7,6 +7,7 @@ import sys
 import time
 
 from os.path import expanduser
+from StringIO import StringIO
 
 from fabric.context_managers import *
 from fabric.contrib.files import exists, upload_template
@@ -23,6 +24,7 @@ class OdooInstance:
         self.instance = instance
         self.username = "odoo-" + self.instance
         self.home = "/home/{}".format(self.username)
+        self.odooconfigfile = "{}/odooconfig.json".format(self.home)
 
     def configure_unix_user(self):
         if not self.unix_user_exists():
@@ -31,9 +33,25 @@ class OdooInstance:
         print "Setting up Unix User..."
         self.setup_unix_user()
 
+    def rebuild_odoo(self):
+        self.create_local_cfg()
+        self.run_buildout()
+        self.stop_odoo()
+        self.upgrade_odoo()
+        self.restart_odoo()
+
+    def reload_config_from_remote(self):
+        fd = StringIO()
+        get(self.odooconfigfile, fd)
+        content=fd.getvalue()
+        print content
+        config_dict = json.loads(content)
+        self.dbuser = config_dict.get('postgres_user')
+        self.password = config_dict.get('postgres_password')
+        self.port = config_dict.get('port')
+
     def install_odoo(self, url=False, version=False, email=False):
-        self.branch = '{0}.0-custom-standard'.format(version)
-        self.cfg = 'odoo{0}-standard.cfg'.format(version)
+        # set vars
         self.url = url or self.instance + '.1systeem.nl'
         self.password = self.get_password()
         self.port = self.get_port()
@@ -41,24 +59,25 @@ class OdooInstance:
         self.dbuser = "odoo" + self.instance.replace('-','')
         self.nginx_file_name = "odoo_" + self.instance
         self.email = email
-        print self.branch, self.cfg
+        self.branch = '{0}.0-custom-standard'.format(version)
+        print self.branch
 
-        if not self.unix_user_exists():
-            print "Setting up Unix User..."
-            self.setup_unix_user()
+        # do installation steps
+        self.ssh_git_clone()
         self.setup_postgres_user()
         self.add_host_to_ssh_config()
-        self.ssh_git_clone()
-        self.create_local_cfg()
         self.add_restart()
         self.add_sudo()
-        self.run_buildout()
-        self.add_and_start_odoo_service()
+        self.add_odoo_service()
         self.encrypt_https_certificate()
         self.configure_nginx()
         self.create_config_file()
-        self.after_installation()
         self.send_config_to_mail()
+        self.after_installation()
+
+        # run buildout, upgrade and restart odoo.
+        self.ssh_git_clone()
+        self.rebuild_odoo()
     
     def get_password(self):
         return sudo("pwgen | awk '{print $1;}'")
@@ -123,13 +142,10 @@ class OdooInstance:
             hide('warnings', 'running', 'stdout', 'stderr'),
             warn_only=True
         ):
-            check_user = sudo(
-                "psql postgres -tAc \"SELECT 1 FROM pg_roles WHERE rolname='{DBUSER}'\"".format(
-                    DBUSER=self.dbuser,
-                ),
+            return sudo(
+                "psql postgres -tAc \"SELECT 1 FROM pg_roles WHERE rolname='{}'\"".format(self.dbuser),
                 user='postgres'
             )
-            return check_user
            
     def add_host_to_ssh_config(self):
         home = expanduser("~")
@@ -167,11 +183,10 @@ class OdooInstance:
             os.system("ssh {USERNAME} 'git clone git@github.com:sunflowerit/custom-installations.git --branch {BRANCH} --single-branch buildout'".format(USERNAME=self.username, BRANCH=self.branch))
 
     def run_buildout(self):
-        os.system("ssh {} 'python buildout/bootstrap.py -c buildout/local.cfg'".format(self.username))
-        os.system("ssh {} 'python buildout/bin/buildout -c buildout/local.cfg'".format(self.username))
-        os.system("ssh {} 'python buildout/bin/buildout -c buildout/local.cfg'".format(self.username))
+        os.system("ssh {} 'cd $HOME/buildout && ./bootstrap'".format(self.username))
+        os.system("ssh {} 'cd $HOME/buildout && ./buildout'".format(self.username))
 
-    def add_and_start_odoo_service(self):
+    def add_odoo_service(self):
         service = sudo("find /lib/systemd/system/ -name {0}.service".format(self.username))
         if not service:
             servicefile = '/lib/systemd/system/{}.service'.format(self.username)
@@ -182,11 +197,16 @@ class OdooInstance:
                 use_sudo=True,
                 backup=False
             )
+        sudo("systemctl daemon-reload")
+
+    def stop_odoo(self):
+        sudo("systemctl stop {}".format(self.username))
+
+    def restart_odoo(self):
         sudo(
-            "systemctl daemon-reload && "
-            "systemctl restart {USERNAME} && "
-            "systemctl status -l --no-pager {USERNAME} -l"
-            .format(USERNAME=self.username)
+            "systemctl restart {0} && "
+            "systemctl status -l --no-pager {0} -l"
+            .format(self.username)
         )
         print 'Waiting for Odoo to start....'
         time.sleep(5)
@@ -195,9 +215,7 @@ class OdooInstance:
             try:
                 sudo("nc -z localhost {PORT}".format(PORT=self.port))
             except FabricException:
-                print 'Odoo not running!'
-                print 'Logfile:'
-                sudo("cat {LOGFILE}".format(LOGFILE=self.logfile))
+                sudo("tail {}".format(self.logfile))
                 print 'ERROR: Odoo not running! Logfile printed'
                 sys.exit(1)
 
@@ -217,13 +235,12 @@ class OdooInstance:
                 sys.exit(1)
 
     def create_local_cfg(self):
-        local_cfg_file = '/home/{}/buildout/local.cfg'.format(self.username)
+        local_cfg_file = '{}/buildout/local.cfg'.format(self.home)
         # TODO: separate auto.cfg and manual.cfg
         upload_template(
             'templates/local.cfg',
             local_cfg_file,
             context={
-                'CFG': self.cfg,
                 'USERNAME': self.username,
                 'DBUSER': self.dbuser,
                 'INSTANCE': self.instance,
@@ -234,12 +251,10 @@ class OdooInstance:
             use_sudo=True,
             backup=False
         )
-        sudo('chown {USERNAME}:{USERNAME} {CFG}'.format(
-            CFG=local_cfg_file,
-            USERNAME=self.username,
-        ))
+        sudo('chown {1}:{1} {0}'.format(local_cfg_file, self.username))
 
     def get_port(self):
+        # TODO: replace this with unix socket
         port_lines = sudo(
             "lsof -P -i -n -sTCP:LISTEN",
         )
@@ -269,25 +284,34 @@ class OdooInstance:
             backup=False,
         )
         sudo("nginx_ensite {} && systemctl restart nginx".format(self.nginx_file_name))
-        os.system("ssh {} 'buildout/bin/upgrade_odoo'".format(self.username))
-        os.system("ssh {USERNAME} 'service {USERNAME} restart'".format(USERNAME=self.username))
+
+    def upgrade_odoo(self):
+        upgrade_script = "{}/buildout/bin/upgrade_odoo".format(self.home)
+        with settings(abort_exception=FabricException):
+            try:
+                os.system("ssh {} 'cd $HOME/buildout && bin/upgrade_odoo'".format(self.username))
+            except FabricException:
+                sudo("tail {}/buildout/upgrade.log".format(self.home))
+                print 'ERROR: Upgrade failed! Logfile printed'
+                sys.exit(1)
 
     def create_config_file(self):
-        odooconfigfile = "/home/{}/odooconfig.json".format(self.username)
         upload_template(
             'templates/odooconfig.json',
-            odooconfigfile,
+            self.odooconfigfile,
             context={
                 'USERNAME': self.username,
                 'DBUSER': self.dbuser,
                 'PASSWORD': self.password,
+                'PORT': self.port,
             },
             use_sudo=True,
             backup=False
         )
+        sudo('chown {0}:{0} {1}'.format(self.odooconfigfile, self.username))
 
     def add_sudo(self):
-        #visudo
+        """ Modify visudo """
         sudoers_file = "/etc/sudoers.d/{}".format(self.username)
         upload_template(
             'templates/sudoers',
@@ -304,7 +328,6 @@ class OdooInstance:
     def add_restart(self):
         #Add the restart script
         restart_script = "/home/{}/buildout/restart".format(self.username)
-        stop_script = "/home/{}/buildout/stop".format(self.username)
         upload_template(
             'templates/restart',
             restart_script,
@@ -312,6 +335,10 @@ class OdooInstance:
             use_sudo=True,
             backup=False
         )
+        sudo('chown {0}:{0} {1}'.format(restart_script, self.username))
+        sudo("chmod u+x {}".format(restart_script))
+
+        stop_script = "/home/{}/buildout/stop".format(self.username)
         upload_template(
             'templates/stop',
             stop_script,
@@ -319,24 +346,12 @@ class OdooInstance:
             use_sudo=True,
             backup=False
         )
-        sudo('chown {USERNAME}:{USERNAME} {SCRIPT}'.format(
-            SCRIPT=restart_script,
-            USERNAME=self.username,
-        ))
-        sudo('chown {USERNAME}:{USERNAME} {SCRIPT}'.format(
-            SCRIPT=stop_script,
-            USERNAME=self.username,
-        ))
-        sudo("chmod u+x {}".format(restart_script))
+        sudo('chown {0}:{0} {1}'.format(stop_script, self.username))
         sudo("chmod u+x {}".format(stop_script))
 
     def after_installation(self):
         sudo(
-            "psql postgres -tAc \"ALTER USER {DBUSER} NOCREATEDB\""
-            .format(
-                DBUSER=self.dbuser,
-                PASSWORD=self.password,
-            ),
+            "psql postgres -tAc \"ALTER USER {} NOCREATEDB\"".format(self.dbuser),
             user='postgres'
         )
 
@@ -374,6 +389,17 @@ def reconfigure(instance=False):
         """
     odoo = OdooInstance(instance=instance)
     odoo.configure_unix_user()
+
+
+def buildout(instance=False):
+    if not instance:
+        print """
+        Run with arguments eg:
+        fab reconfigure:instance=testv2
+        """
+    odoo = OdooInstance(instance=instance)
+    odoo.reload_config_from_remote()
+    odoo.rebuild_odoo()
 
 
 def backup():

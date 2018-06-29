@@ -2,5 +2,6 @@
     "unix_user": "%(USERNAME)s",
     "unix_password": "%(PASSWORD)s",
     "postgres_user": "%(DBUSER)s",
-    "postgres_passord": "%(PASSWORD)s"
+    "postgres_password": "%(PASSWORD)s",
+    "port": "%(PORT)s"
 }
