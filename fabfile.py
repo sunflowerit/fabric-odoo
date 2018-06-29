@@ -10,7 +10,7 @@ from os.path import expanduser
 from StringIO import StringIO
 
 from fabric.context_managers import *
-from fabric.contrib.files import exists, upload_template
+from fabric.contrib.files import append, exists, upload_template
 from fabric.api import *
 
 
@@ -101,8 +101,15 @@ class OdooInstance:
         put('templates/.vimrc', vim_file, use_sudo=True)
         sudo("chown {0}:{0} {1}".format(self.username, vim_file))
 
-        sudo('git config --global user.name "Odoo instance: {}"'.format(self.instance), user=self.username)
-        sudo('git config --global user.email info@sunflowerweb.nl', user=self.username)
+        with settings(sudo_user=self.username):
+            sudo('git config --global user.name "Odoo instance: {}"'.format(self.instance))
+            sudo('git config --global user.email info@sunflowerweb.nl')
+            sudo('pip install --upgrade --user https://github.com/sunflowerit/dev-helper-scripts/archive/master.zip')
+            profile = self.home + '/.profile'
+            bash_profile = self.home + '/.bash_profile'
+            if exists(bash_profile) or not exists(profile):
+                profile = bash_profile
+            append(profile, 'if [ -d "$HOME/.local/bin" ] ; then PATH="$HOME/.local/bin:$PATH"; fi', use_sudo=True)
 
         print('Unix User Setup Successful...')
 
