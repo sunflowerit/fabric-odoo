@@ -364,10 +364,11 @@ class OdooInstance:
         sudo("chmod u+x {}".format(stop_script))
 
     def after_installation(self):
-        sudo(
-            "psql postgres -tAc \"ALTER USER {} NOCREATEDB\"".format(self.dbuser),
-            user='postgres'
-        )
+        pass
+        #sudo(
+        #    "psql postgres -tAc \"ALTER USER {} NOCREATEDB\"".format(self.dbuser),
+        #    user='postgres'
+        #)
 
     def send_config_to_mail(self):
         pass
