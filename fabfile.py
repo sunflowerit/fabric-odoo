@@ -63,9 +63,9 @@ class OdooInstance:
         print self.branch
 
         # do installation steps
+        self.add_host_to_ssh_config()
         self.ssh_git_clone()
         self.setup_postgres_user()
-        self.add_host_to_ssh_config()
         self.add_restart()
         self.add_sudo()
         self.add_odoo_service()
@@ -88,6 +88,9 @@ class OdooInstance:
 
     def setup_unix_user(self):
         ssh_dir = "{}/.ssh".format(self.home)
+        sudo("mkdir -p {}".format(ssh_dir))
+        sudo("chown {0}:{0} {1}".format(self.username, ssh_dir))
+        sudo("chmod 700 {}".format(ssh_dir))
 
         auth_file = "{}/authorized_keys".format(ssh_dir)
         put('config/authorized_keys', auth_file, use_sudo=True)
@@ -319,7 +322,7 @@ class OdooInstance:
             use_sudo=True,
             backup=False
         )
-        sudo('chown {0}:{0} {1}'.format(self.odooconfigfile, self.username))
+        sudo('chown {1}:{1} {0}'.format(self.odooconfigfile, self.username))
 
     def add_sudo(self):
         """ Modify visudo """
@@ -346,7 +349,7 @@ class OdooInstance:
             use_sudo=True,
             backup=False
         )
-        sudo('chown {0}:{0} {1}'.format(restart_script, self.username))
+        sudo('chown {1}:{1} {0}'.format(restart_script, self.username))
         sudo("chmod u+x {}".format(restart_script))
 
         stop_script = "/home/{}/buildout/stop".format(self.username)
@@ -357,7 +360,7 @@ class OdooInstance:
             use_sudo=True,
             backup=False
         )
-        sudo('chown {0}:{0} {1}'.format(stop_script, self.username))
+        sudo('chown {1}:{1} {0}'.format(stop_script, self.username))
         sudo("chmod u+x {}".format(stop_script))
 
     def after_installation(self):
@@ -388,7 +391,7 @@ def install_odoo(instance=False, url=False, version=False, email=False):
     else:
         odoo = OdooInstance(instance=instance)
         odoo.configure_unix_user()
-        odoo.install(url=url, version=version, email=email)
+        odoo.install_odoo(url=url, version=version, email=email)
         print('Yay, we are done, visit your odoo instance at: \n https://{}'.format(odoo.url))
 
 
