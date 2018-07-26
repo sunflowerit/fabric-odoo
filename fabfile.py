@@ -370,9 +370,48 @@ class OdooInstance:
         #    user='postgres'
         #)
 
-    def send_config_to_mail(self):
-        pass
-        #TODO
+    def send_config_to_mail(self, url=False, version=False, email=False):
+        msg = '\
+            Dear User, below are details of you newly created odoo instance:\
+            name: {0}. \
+            url: {1}. \
+            version: {2} \
+            username: admin. \
+            password: admin. \
+            You can change the password after login. \
+            Regards, \
+            Sunflower IT.'.format(self.instance, url, version)
+        sudo('echo {} | mail {}'.format(msg, email))
+
+    def run_backup(self, email=False):
+        date = time.strftime('%Y-%m-%d-%H-%M-%S')
+        #sql backup
+        sudo('pg_dump -E UTF-8 -F p -b -C -f /tmp/{0}.sql odoo{0}'
+             .format(self.instance),
+             user='postgres')
+
+        #filestore backup
+        sudo('tar -cf /tmp/odoo-{0}.tar /home/odoo-{0}/.local/share/Odoo/filestore/odoo{0}/'
+             .format(self.instance))
+
+        sudo('zip /tmp/{0}-{1}.backup /tmp/odoo-{0}.tar /tmp/{0}.sql'
+             .format(self.instance, date))
+
+        #save in instance/backup folder
+        backup = os.path.isdir("backup")
+        if not backup:
+            os.system("mkdir backup")
+        os.system('scp -r applejuice.sunflowerweb.nl:/tmp/{0}.backup backup/{0}.backup'
+            .format(self.instance))
+
+        #remove files from /tmp
+        sudo('rm -f /tmp/{0}.sql /tmp/odoo-{0}.tar tmp/{0}-{1}.backup'.format(self.instance, date))
+
+        #send email after successful backup
+        msg = "Backup for {} at {} successful.".format(self.instance, date)
+        sudo('echo {} | mail {}'.format(msg, email))
+
+        print msg
 
 
 def install_odoo(instance=False, url=False, version=False, email=False):
@@ -393,6 +432,7 @@ def install_odoo(instance=False, url=False, version=False, email=False):
         odoo = OdooInstance(instance=instance)
         odoo.configure_unix_user()
         odoo.install_odoo(url=url, version=version, email=email)
+        odoo.send_config_to_mail(url=url, version=version, email=email)
         print('Yay, we are done, visit your odoo instance at: \n https://{}'.format(odoo.url))
 
 
@@ -417,44 +457,56 @@ def buildout(instance=False):
     odoo.rebuild_odoo()
 
 
-def backup():
-    # can use this to do for each buildout 
-    # require('buildouts', provided_by=[irodion])
-    
-    for host in env.hosts:
-        date = time.strftime('%Y%m%d%H%M%S')
-        fname = '/tmp/{host}-backup-{date}.xz'.format(**{
-            'host': host,
-            'date': date,
-        })
+def backup(instance=False, url=False, version=False, email=False):
+    if not instance or not email:
+        print """
+        Run with arguments eg:
+        fab backup:instance=testv2,url=testurl
+        Some arguments are missing:
+        1. Required Arguments are:
+            instance=INSTANCE_NAME
+            email=INSTANCE_SETTINGS_EMAIL
+        2. Optional Arguments are:
+            url=INSTANCE_URL eg. test.1systeem.nl
+        """
+    else:
+        odoo = OdooInstance(instance=instance)
+        odoo.run_backup(email=email)
 
-        output = sudo(
-            "psql -P pager -t -A -c 'SELECT datname FROM pg_database'",
-            user='postgres'
-        )
-        for database in output.splitlines():
-            fname = '/tmp/{host}-{database}-backup-{date}.xz'.format(**{
-                'host': host,
-                'database': database,
-                'date': date,
-            })
-            if exists(fname):
-                run('rm "{0}"'.format(fname))
-
-            #pg_dump $db |gzip -f > /tmp/pg_$db.sql.gz
-            # sudo su - postgres
-            sudo('cd; pg_dump {database} | xz > {fname}'.format(**{
-                'database': database, 
-                'fname': fname,
-            }), user='postgres')
-
-        #if exists(fname):
-        #    run('rm "{0}"'.format(fname))
-        #
-        #sudo('cd; pg_dumpall | xz > {0}'.format(fname), user='postgres')
-        #
-        get(fname, os.path.basename(fname))
-        sudo('rm "{0}"'.format(fname), user='postgres')
+    # for host in env.hosts:
+    #     date = time.strftime('%Y%m%d%H%M%S')
+    #     fname = '/tmp/{host}-backup-{date}.xz'.format(**{
+    #         'host': host,
+    #         'date': date,
+    #     })
+    #
+    #     output = sudo(
+    #         "psql -P pager -t -A -c 'SELECT datname FROM pg_database'",
+    #         user='postgres'
+    #     )
+    #     for database in output.splitlines():
+    #         fname = '/tmp/{host}-{database}-backup-{date}.xz'.format(**{
+    #             'host': host,
+    #             'database': database,
+    #             'date': date,
+    #         })
+    #         if exists(fname):
+    #             run('rm "{0}"'.format(fname))
+    #
+    #         #pg_dump $db |gzip -f > /tmp/pg_$db.sql.gz
+    #         # sudo su - postgres
+    #         sudo('cd; pg_dump {database} | xz > {fname}'.format(**{
+    #             'database': database,
+    #             'fname': fname,
+    #         }), user='postgres')
+    #
+    #     #if exists(fname):
+    #     #    run('rm "{0}"'.format(fname))
+    #     #
+    #     #sudo('cd; pg_dumpall | xz > {0}'.format(fname), user='postgres')
+    #     #
+    #     get(fname, os.path.basename(fname))
+    #     sudo('rm "{0}"'.format(fname), user='postgres')
 
     # def backup():
 
