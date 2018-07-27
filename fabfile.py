@@ -5,6 +5,7 @@ import json
 import os
 import sys
 import time
+import subprocess
 
 from os.path import expanduser
 from StringIO import StringIO
@@ -371,17 +372,22 @@ class OdooInstance:
         #)
 
     def send_config_to_mail(self, url=False, version=False, email=False):
-        msg = '\
-            Dear User, below are details of you newly created odoo instance:\
-            name: {0}. \
-            url: {1}. \
-            version: {2} \
-            username: admin. \
-            password: admin. \
-            You can change the password after login. \
-            Regards, \
-            Sunflower IT.'.format(self.instance, url, version)
-        sudo('echo {} | mail {}'.format(msg, email))
+        msg = "\
+            Dear User odoo-{0}, below are details of you newly created odoo instance:\n\n\
+            name: {0}.\n\
+            url: {1}.\n\
+            version: {2}\n\
+            username: admin.\n\
+            password: admin.\n\n\
+            You can change the password after login.\n\n\
+            Regards,\n\
+            Sunflower IT.".format(self.instance, url, version)
+        script = "echo '{1}' | mail -s 'Configurations for {0} instance.' {2}".format(
+            self.instance, msg, email)
+        p = subprocess.Popen(
+            script, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+        )
+        p.communicate()[0]
 
     def run_backup(self, email=False):
         date = time.strftime('%Y-%m-%d-%H-%M-%S')
@@ -397,22 +403,22 @@ class OdooInstance:
         sudo('zip /tmp/{0}-{1}.backup /tmp/odoo-{0}.tar /tmp/{0}.sql'
              .format(self.instance, date))
 
-        #save in instance/backup folder
-        backup = os.path.isdir("backup")
-        if not backup:
-            os.system("mkdir backup")
-        os.system('scp -r applejuice.sunflowerweb.nl:/tmp/{0}.backup backup/{0}.backup'
+        os.system('scp -r applejuice.sunflowerweb.nl:/tmp/{0}* /mnt/volume-fra1-01/sfit-backup'
             .format(self.instance))
 
         #remove files from /tmp
         sudo('rm -f /tmp/{0}.sql /tmp/odoo-{0}.tar tmp/{0}-{1}.backup'.format(self.instance, date))
 
         #send email after successful backup
-        msg = "Backup for {} at {} successful.".format(self.instance, date)
-        sudo('echo {} | mail {}'.format(msg, email))
+        msg = "Backup for {0} at {1} successful.".format(self.instance, date)
+        script = "echo '{1}' | mail -s 'Backup for {0} instance.' {2}".format(
+            self.instance, msg, email)
+        p = subprocess.Popen(
+            script, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+        )
+        p.communicate()[0]
 
         print msg
-
 
 def install_odoo(instance=False, url=False, version=False, email=False):
     #fab install_odoo:instance=testv2,url=testurl
@@ -430,10 +436,11 @@ def install_odoo(instance=False, url=False, version=False, email=False):
         """
     else:
         odoo = OdooInstance(instance=instance)
-        odoo.configure_unix_user()
-        odoo.install_odoo(url=url, version=version, email=email)
+        # odoo.configure_unix_user()
+        # odoo.install_odoo(url=url, version=version, email=email)
         odoo.send_config_to_mail(url=url, version=version, email=email)
-        print('Yay, we are done, visit your odoo instance at: \n https://{}'.format(odoo.url))
+        # print('Yay, we are done, visit your odoo instance at: \n https://{}'.format(odoo.url))
+        print('Yay, we are done, visit your odoo instance at: \n https://{}')
 
 
 def reconfigure(instance=False):
@@ -472,54 +479,3 @@ def backup(instance=False, url=False, version=False, email=False):
     else:
         odoo = OdooInstance(instance=instance)
         odoo.run_backup(email=email)
-
-    # for host in env.hosts:
-    #     date = time.strftime('%Y%m%d%H%M%S')
-    #     fname = '/tmp/{host}-backup-{date}.xz'.format(**{
-    #         'host': host,
-    #         'date': date,
-    #     })
-    #
-    #     output = sudo(
-    #         "psql -P pager -t -A -c 'SELECT datname FROM pg_database'",
-    #         user='postgres'
-    #     )
-    #     for database in output.splitlines():
-    #         fname = '/tmp/{host}-{database}-backup-{date}.xz'.format(**{
-    #             'host': host,
-    #             'database': database,
-    #             'date': date,
-    #         })
-    #         if exists(fname):
-    #             run('rm "{0}"'.format(fname))
-    #
-    #         #pg_dump $db |gzip -f > /tmp/pg_$db.sql.gz
-    #         # sudo su - postgres
-    #         sudo('cd; pg_dump {database} | xz > {fname}'.format(**{
-    #             'database': database,
-    #             'fname': fname,
-    #         }), user='postgres')
-    #
-    #     #if exists(fname):
-    #     #    run('rm "{0}"'.format(fname))
-    #     #
-    #     #sudo('cd; pg_dumpall | xz > {0}'.format(fname), user='postgres')
-    #     #
-    #     get(fname, os.path.basename(fname))
-    #     sudo('rm "{0}"'.format(fname), user='postgres')
-
-    # def backup():
-
-    # sudo to backup user
-    # catch all the legacy backups
-    # copy them here
-    # remove them there.
-    # mail someone if there is some missing
-    # that doesnt have the required date or name
-
-    # sudo to each odoo
-    # install oca backup module if its not there yet
-    # do the backup from a buildout script
-    # download it
-
-
