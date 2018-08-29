@@ -8,6 +8,7 @@ import time
 
 from os.path import expanduser
 from StringIO import StringIO
+import subprocess 
 
 from fabric.context_managers import *
 from fabric.contrib.files import append, exists, upload_template
@@ -25,6 +26,24 @@ class OdooInstance:
         self.username = "odoo-" + self.instance
         self.home = "/home/{}".format(self.username)
         self.odooconfigfile = "{}/odooconfig.json".format(self.home)
+	
+    def send_config_to_mail(self, url=False, version=False, email=False):
+	msg = "\
+            Dear User, below are details of you newly created odoo instance:\n\n\
+            name: {0}.\n\
+            url: {1}.\n\
+            version: {2}\n\
+            username: admin.\n\
+            password: admin.\n\n\
+            You can change the password after login.\n\n\
+            Regards,\n\
+            Sunflower IT.".format(self.instance, url, version)
+        #sudo ('echo blabla | mail nza.terrence@gmail.com')
+        script = "echo '{}' | mail -s 'subject' nza.terrence@gmail.com".format(msg)
+        p = subprocess.Popen(script, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)        
+        #p = Popen([], stdin=PIPE)
+        p.communicate()[0]
+         #sudo('echo {} | mail {}'.format(msg, email))
 
     def configure_unix_user(self):
         if not self.unix_user_exists():
@@ -283,7 +302,7 @@ class OdooInstance:
 
     def configure_nginx(self): 
         nginx_file = "/etc/nginx/sites-available/" + self.nginx_file_name
-        url = self.instance + ".1systeem.nl" 
+        url = self.url
 
         upload_template(
             'templates/nginx.conf',
@@ -370,10 +389,19 @@ class OdooInstance:
         #    user='postgres'
         #)
 
-    def send_config_to_mail(self):
-        pass
-        #TODO
-
+    def send_config_to_mail1(self, url=False, version=False, email=False):
+ 	msg = """\
+		memee\
+		MMDMDMDMDM\
+		{}-{}-{}
+		""".format(self.instance, url, version)
+	#sudo ('echo blabla | mail nza.terrence@gmail.com')
+        script = "echo {} | mail nza.terrence@gmail.com".format(msg)
+	p = subprocess.Popen(script, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)        
+	#p = Popen([], stdin=PIPE)
+        p.communicate()[0]
+	 #sudo('echo {} | mail {}'.format(msg, email))
+	print  "mail sent"
 
 def install_odoo(instance=False, url=False, version=False, email=False):
     #fab install_odoo:instance=testv2,url=testurl
@@ -393,8 +421,9 @@ def install_odoo(instance=False, url=False, version=False, email=False):
         odoo = OdooInstance(instance=instance)
         odoo.configure_unix_user()
         odoo.install_odoo(url=url, version=version, email=email)
+        odoo.send_config_to_mail(url=url, version=version, email=email) 
         print('Yay, we are done, visit your odoo instance at: \n https://{}'.format(odoo.url))
-
+	print "its done"
 
 def reconfigure(instance=False):
     if not instance:
