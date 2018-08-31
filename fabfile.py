@@ -11,6 +11,7 @@ from StringIO import StringIO
 import subprocess 
 
 from fabric.context_managers import *
+from fabric.contrib.console import confirm
 from fabric.contrib.files import append, exists, upload_template
 from fabric.api import *
 
@@ -82,6 +83,7 @@ class OdooInstance:
         print self.branch
 
         # do installation steps
+        self.check_exist()
         self.add_host_to_ssh_config()
         self.ssh_git_clone()
         self.setup_postgres_user()
@@ -104,6 +106,12 @@ class OdooInstance:
     def create_unix_user(self):
         """ Create unix user """
         sudo("adduser {} --disabled-password --gecos GECOS".format(self.username))
+
+    def check_exist(self):
+        if exists(self.home):
+            if not confirm('instance {} already exists in {}. Continue?'.format(
+                    self.instance, self.home)):
+                sys.exit(1)
 
     def setup_unix_user(self):
         ssh_dir = "{}/.ssh".format(self.home)
@@ -419,6 +427,7 @@ def install_odoo(instance=False, url=False, version=False, email=False):
         """
     else:
         odoo = OdooInstance(instance=instance)
+        odoo.check_exist()
         odoo.configure_unix_user()
         odoo.install_odoo(url=url, version=version, email=email)
         odoo.send_config_to_mail(url=url, version=version, email=email) 
