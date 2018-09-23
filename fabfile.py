@@ -27,6 +27,7 @@ class OdooInstance:
         self.username = "odoo-" + self.instance
         self.home = "/home/{}".format(self.username)
         self.odooconfigfile = "{}/odooconfig.json".format(self.home)
+        env.shell = "/bin/bash -c"
 	
     def send_config_to_mail(self, url=False, version=False, email=False):
 	msg = "\
@@ -39,12 +40,9 @@ class OdooInstance:
             You can change the password after login.\n\n\
             Regards,\n\
             Sunflower IT.".format(self.instance, url, version)
-        #sudo ('echo blabla | mail nza.terrence@gmail.com')
         script = "echo '{}' | mail -s 'subject' nza.terrence@gmail.com".format(msg)
         p = subprocess.Popen(script, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)        
-        #p = Popen([], stdin=PIPE)
         p.communicate()[0]
-         #sudo('echo {} | mail {}'.format(msg, email))
 
     def configure_unix_user(self):
         if not self.unix_user_exists():
@@ -132,18 +130,18 @@ class OdooInstance:
         put('templates/.bash_aliases', aliases, use_sudo=True)
         sudo("chown {0}:{0} {1}".format(self.username, vim_file))
 
-        with settings(sudo_user=self.username):
+        with settings(sudo_user=self.username, sudo_prefix='sudo -H -S -p \'{}\''.format(env.sudo_prompt)):
             sudo("mkdir -p {}".format(ssh_dir))
             sudo("chmod 700 {}".format(ssh_dir))
 
-            sudo('git config --global user.name "Odoo instance: {}"'.format(self.instance))
-            sudo('git config --global user.email info@sunflowerweb.nl')
             sudo('pip install --upgrade --user https://github.com/sunflowerit/dev-helper-scripts/archive/master.zip')
             profile = self.home + '/.profile'
             bash_profile = self.home + '/.bash_profile'
             if exists(bash_profile) or not exists(profile):
                 profile = bash_profile
             append(profile, 'if [ -d "$HOME/.local/bin" ] ; then PATH="$HOME/.local/bin:$PATH"; fi', use_sudo=True)
+            sudo('git config --global user.name "Odoo instance: {}"'.format(self.instance))
+            sudo('git config --global user.email info@sunflowerweb.nl')
 
         print('Unix User Setup Successful...')
 
