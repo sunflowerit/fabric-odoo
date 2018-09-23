@@ -239,7 +239,7 @@ class OdooInstance:
                 backup=False
             )
         sudo("systemctl daemon-reload")
-        sudo("systemctl enable {}".format(self.username)
+        sudo("systemctl enable {}".format(self.username))
 
     def stop_odoo(self):
         sudo("systemctl stop {}".format(self.username))
