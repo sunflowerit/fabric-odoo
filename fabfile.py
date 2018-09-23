@@ -78,7 +78,11 @@ class OdooInstance:
         self.dbuser = "odoo" + self.instance.replace('-','')
         self.nginx_file_name = "odoo_" + self.instance
         self.email = email
-        self.branch = '{0}.0-custom-standard'.format(version)
+        try:
+            v = int(version)
+            self.branch = '{0}.0-custom-standard'.format(version)
+        except ValueError:
+            self.branch = version
         print self.branch
 
         # do installation steps
@@ -215,9 +219,18 @@ class OdooInstance:
             print "Known Hosts does not exist, adding file known_hosts..."
             os.system("ssh {0} 'touch /home/{0}/.ssh/known_hosts'".format(self.username))
             os.system("ssh {0} 'ssh-keygen -F github.com || ssh-keyscan github.com >> /home/{0}/.ssh/known_hosts'".format(self.username))
-        if not buildout:
-            print "Buildout does not exist, cloning into home dir...", self.username
-            os.system("eval `ssh-agent -s` && ssh-add && ssh -A {USERNAME} 'git clone git@github.com:sunflowerit/custom-installations.git --branch {BRANCH} --single-branch buildout'".format(USERNAME=self.username, BRANCH=self.branch))
+        with cd(self.home):
+            if not buildout:
+                print "Buildout does not exist, cloning into home dir...", self.username
+                os.system("eval `ssh-agent -s` && ssh-add && ssh -A {USERNAME} 'git clone git@github.com:sunflowerit/custom-installations.git --branch {BRANCH} --single-branch buildout'".format(USERNAME=self.username, BRANCH=self.branch))
+            else:
+                os.system("eval `ssh-agent -s` && ssh-add && ssh -A {0} 'git -C buildout fetch origin {1}'".format(self.username, self.branch))
+                os.system("eval `ssh-agent -s` && ssh-add && ssh -A {} 'git -C buildout branch -D dummy'".format(self.username))
+                os.system("eval `ssh-agent -s` && ssh-add && ssh -A {} 'git -C buildout checkout -b dummy'".format(self.username))
+                os.system("eval `ssh-agent -s` && ssh-add && ssh -A {0} 'git -C buildout branch -D {1}'".format(self.username, self.branch))
+                os.system("eval `ssh-agent -s` && ssh-add && ssh -A {} 'git -C buildout branch -a'".format(self.username))
+                os.system("eval `ssh-agent -s` && ssh-add && ssh -A {USERNAME} 'git -C buildout checkout -b {BRANCH} FETCH_HEAD'".format(USERNAME=self.username, BRANCH=self.branch))
+                os.system("eval `ssh-agent -s` && ssh-add && ssh -A {} 'git -C buildout branch -a'".format(self.username))
 
     def run_buildout(self):
         os.system("ssh {} 'cd $HOME/buildout && ./bootstrap'".format(self.username))
@@ -438,6 +451,8 @@ def prepserver():
     sudo('apt-get install python-certbot-nginx')
     sudo('apt-get install git')
     sudo('apt-get install postgresql')
+    sudo('apt-get install nginx')
+    sudo('openssl dhparam -dsaparam -out /etc/ssl/certs/dhparam.pem 4096')
 
 
 def reconfigure(instance=False):
