@@ -28,7 +28,8 @@ class OdooInstance:
         self.home = "/home/{}".format(self.username)
         self.odooconfigfile = "{}/odooconfig.json".format(self.home)
         env.shell = "/bin/bash -c"
-	
+        env.sudo_prefix = 'sudo -H -S -p \'{}\''.format(env.sudo_prompt)
+
     def send_config_to_mail(self, url=False, version=False, email=False):
 	msg = "\
             Dear User, below are details of you newly created odoo instance:\n\n\
@@ -81,22 +82,21 @@ class OdooInstance:
         print self.branch
 
         # do installation steps
-        self.check_exist()
-        self.add_host_to_ssh_config()
-        self.ssh_git_clone()
-        self.setup_postgres_user()
-        self.add_restart()
-        self.add_sudo()
-        self.add_odoo_service()
-        self.encrypt_https_certificate()
-        self.configure_nginx()
-        self.create_config_file()
-        self.send_config_to_mail()
-        self.after_installation()
+        with cd('/tmp'):
+            self.add_host_to_ssh_config()
+            self.ssh_git_clone()
+            self.setup_postgres_user()
+            self.add_restart()
+            self.add_sudo()
+            self.add_odoo_service()
+            self.encrypt_https_certificate()
+            self.configure_nginx()
+            self.create_config_file()
+            self.send_config_to_mail()
+            self.after_installation()
 
-        # run buildout, upgrade and restart odoo.
-        self.ssh_git_clone()
-        self.rebuild_odoo()
+            # run buildout, upgrade and restart odoo.
+            self.rebuild_odoo()
     
     def get_password(self):
         return sudo("pwgen | awk '{print $1;}'")
@@ -130,7 +130,7 @@ class OdooInstance:
         put('templates/.bash_aliases', aliases, use_sudo=True)
         sudo("chown {0}:{0} {1}".format(self.username, vim_file))
 
-        with settings(sudo_user=self.username, sudo_prefix='sudo -H -S -p \'{}\''.format(env.sudo_prompt)):
+        with settings(sudo_user=self.username), cd(self.home):
             sudo("mkdir -p {}".format(ssh_dir))
             sudo("chmod 700 {}".format(ssh_dir))
 
@@ -146,18 +146,18 @@ class OdooInstance:
         print('Unix User Setup Successful...')
 
     def setup_postgres_user(self):
-        if not self.postgres_user_exists():
-            sudo("createuser {}".format(self.dbuser), user='postgres')
-        sudo(
-            "psql postgres -tAc \"ALTER USER {DBUSER} WITH PASSWORD '{PASSWORD}'\" && "
-            "psql postgres -tAc \"ALTER USER {DBUSER} CREATEDB\""
-            .format(
-                DBUSER=self.dbuser,
-                PASSWORD=self.password,
-            ),
-            user='postgres'
-        )
-        print('Postgres User Setup Successful...')
+        with settings(sudo_user='postgres'), cd('/tmp'):
+            if not self.postgres_user_exists():
+                sudo("createuser {}".format(self.dbuser))
+            sudo(
+                "psql postgres -tAc \"ALTER USER {DBUSER} WITH PASSWORD '{PASSWORD}'\" && "
+                "psql postgres -tAc \"ALTER USER {DBUSER} CREATEDB\""
+                .format(
+                    DBUSER=self.dbuser,
+                    PASSWORD=self.password,
+                )
+            )
+            print('Postgres User Setup Successful...')
 
     def unix_user_exists(self):
         with settings(
@@ -179,11 +179,11 @@ class OdooInstance:
     def postgres_user_exists(self):
         with settings(
             hide('warnings', 'running', 'stdout', 'stderr'),
-            warn_only=True
-        ):
+            warn_only=True,
+            sudo_user='postgres'
+        ), cd('/tmp'):
             return sudo(
-                "psql postgres -tAc \"SELECT 1 FROM pg_roles WHERE rolname='{}'\"".format(self.dbuser),
-                user='postgres'
+                "psql postgres -tAc \"SELECT 1 FROM pg_roles WHERE rolname='{}'\"".format(self.dbuser)
             )
            
     def add_host_to_ssh_config(self):
@@ -192,7 +192,7 @@ class OdooInstance:
 
         # CHECK IF HOST EXISTS IN ./ssh/config
         host_exists = False
-        searchfile = open(config_file, "r")
+        searchfile = open(config_file, "w+")
         for line in searchfile:
             if self.username in line: 
                 host_exists = self.username
@@ -201,25 +201,23 @@ class OdooInstance:
         #ADD HOST TO ./ssh/config
         if not host_exists:
             with open(config_file, "a") as config:
-                config.write("""\nHost {USERNAME}\n\
-        ForwardAgent yes\n\
-        HostName applejuice.sunflowerweb.nl\n\
-        User {USERNAME}\n""".format(**{
-                    'USERNAME': self.username,
-                }),)
+                config.write("""
+                Host {0}\n
+                ForwardAgent yes\n
+                HostName {1}\n
+                User {0}\n
+                """.format(self.username, env.host))
 
     def ssh_git_clone(self):
         known_hosts = sudo("find /home/{}/.ssh -name known_hosts".format(self.username))
         buildout = sudo("find /home/{} -type d -name buildout".format(self.username))
         if not known_hosts:
             print "Known Hosts does not exist, adding file known_hosts..."
-            os.system("ssh {USERNAME} 'touch /home/{USERNAME}/.ssh/known_hosts'".format(
-                USERNAME=self.username
-            ))
-            os.system("ssh {USERNAME} 'ssh-keygen -F github.com || ssh-keyscan github.com >> /home/{USERNAME}/.ssh/known_hosts'".format(USERNAME=self.username))
+            os.system("ssh {0} 'touch /home/{0}/.ssh/known_hosts'".format(self.username))
+            os.system("ssh {0} 'ssh-keygen -F github.com || ssh-keyscan github.com >> /home/{0}/.ssh/known_hosts'".format(self.username))
         if not buildout:
             print "Buildout does not exist, cloning into home dir...", self.username
-            os.system("ssh {USERNAME} 'git clone git@github.com:sunflowerit/custom-installations.git --branch {BRANCH} --single-branch buildout'".format(USERNAME=self.username, BRANCH=self.branch))
+            os.system("eval `ssh-agent -s` && ssh-add && ssh -A {USERNAME} 'git clone git@github.com:sunflowerit/custom-installations.git --branch {BRANCH} --single-branch buildout'".format(USERNAME=self.username, BRANCH=self.branch))
 
     def run_buildout(self):
         os.system("ssh {} 'cd $HOME/buildout && ./bootstrap'".format(self.username))
@@ -263,14 +261,12 @@ class OdooInstance:
         with settings(abort_exception=FabricException):
             try:
                 sudo(
-                   "systemctl stop nginx && "
-                   "certbot certonly -d {URL} -m info@sunflowerweb.nl -n --agree-tos --standalone && "
-                   "systemctl start nginx"
+                   "certbot certonly -d {URL} -m info@sunflowerweb.nl -n --agree-tos --nginx"
                    .format(URL=self.url)
                 )
             except FabricException:
-                sudo("systemctl status -l --no-pager {} -l".format(self.nginx_file_name))
-                sudo("nginx_dissite {} && systemctl restart nginx".format(self.nginx_file_name))
+                #sudo("systemctl status -l --no-pager {} -l".format(self.nginx_file_name))
+                sudo("systemctl restart nginx")
                 print 'ERROR: NGINX problem. Logfile printed.'
                 sys.exit(1)
 
@@ -432,6 +428,17 @@ def install_odoo(instance=False, url=False, version=False, email=False):
         odoo.send_config_to_mail(url=url, version=version, email=email) 
         print('Yay, we are done, visit your odoo instance at: \n https://{}'.format(odoo.url))
 	print "its done"
+
+
+def prepserver():
+    sudo('apt-get update')
+    sudo('apt-get install software-properties-common')
+    sudo('add-apt-repository ppa:certbot/certbot')
+    sudo('apt-get update')
+    sudo('apt-get install python-certbot-nginx')
+    sudo('apt-get install git')
+    sudo('apt-get install postgresql')
+
 
 def reconfigure(instance=False):
     if not instance:
