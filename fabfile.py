@@ -118,7 +118,7 @@ class OdooInstance:
     def setup_unix_user(self):
         ssh_dir = "{}/.ssh".format(self.home)
         sudo("mkdir -p {}".format(ssh_dir))
-        sudo("chown {0}:{0} {1}".format(self.username, ssh_dir))
+        sudo("chown -R {0}:{0} {1}".format(self.username, self.home))
         sudo("chmod 700 {}".format(ssh_dir))
 
         auth_file = "{}/authorized_keys".format(ssh_dir)
@@ -222,15 +222,15 @@ class OdooInstance:
         with cd(self.home):
             if not buildout:
                 print "Buildout does not exist, cloning into home dir...", self.username
-                os.system("eval `ssh-agent -s` && ssh-add && ssh -A {USERNAME} 'git clone git@github.com:sunflowerit/custom-installations.git --branch {BRANCH} --single-branch buildout'".format(USERNAME=self.username, BRANCH=self.branch))
+                os.system("ssh {} 'git clone git@github.com:sunflowerit/custom-installations.git --branch {} --single-branch buildout'".format(self.username, self.branch))
             else:
-                os.system("eval `ssh-agent -s` && ssh-add && ssh -A {0} 'git -C buildout fetch origin {1}'".format(self.username, self.branch))
-                os.system("eval `ssh-agent -s` && ssh-add && ssh -A {} 'git -C buildout branch -D dummy'".format(self.username))
-                os.system("eval `ssh-agent -s` && ssh-add && ssh -A {} 'git -C buildout checkout -b dummy'".format(self.username))
-                os.system("eval `ssh-agent -s` && ssh-add && ssh -A {0} 'git -C buildout branch -D {1}'".format(self.username, self.branch))
-                os.system("eval `ssh-agent -s` && ssh-add && ssh -A {} 'git -C buildout branch -a'".format(self.username))
-                os.system("eval `ssh-agent -s` && ssh-add && ssh -A {USERNAME} 'git -C buildout checkout -b {BRANCH} FETCH_HEAD'".format(USERNAME=self.username, BRANCH=self.branch))
-                os.system("eval `ssh-agent -s` && ssh-add && ssh -A {} 'git -C buildout branch -a'".format(self.username))
+                os.system("ssh {} 'git -C buildout fetch origin {}'".format(self.username, self.branch))
+                os.system("ssh {} 'git -C buildout branch -D dummy'".format(self.username))
+                os.system("ssh {} 'git -C buildout checkout -b dummy'".format(self.username))
+                os.system("ssh {} 'git -C buildout branch -D {}'".format(self.username, self.branch))
+                os.system("ssh {} 'git -C buildout branch -a'".format(self.username))
+                os.system("ssh {} 'git -C buildout checkout -b {} FETCH_HEAD'".format(self.username, self.branch))
+                os.system("ssh {} 'git -C buildout branch -a'".format(self.username))
 
     def run_buildout(self):
         os.system("ssh {} 'cd $HOME/buildout && ./bootstrap'".format(self.username))
